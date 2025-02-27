@@ -1,4 +1,5 @@
 from aiogram import Router
+from aiogram.enums import ParseMode
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
@@ -8,6 +9,7 @@ from internal.filters import IsAdminFilter
 from internal.keyboards import main_admin_kb, languages_kb, LanguageCbData, issues_kb, IssueCbData
 from internal.models import User, Language
 from internal.utils import CLIENT_LOCALE_MESSAGES
+from pkg.config import settings
 from pkg.database import session_factory
 
 admin_router = Router()
@@ -80,6 +82,17 @@ async def callback_set_issue(callback: CallbackQuery, callback_data: IssueCbData
             issue=issue
         )
         session.add(user)
+        session.commit()
+
+        message = await callback.bot.send_message(
+            chat_id=settings.CHANNEL_TELEGRAM_ID,
+            text=f"{user.language.value.upper()} {user.issue.value.upper()}\n"
+                 f"#{(8 - len(str(user.id))) * '0'}{user.id}\n"
+                 f"{'<a href=\"tg://user?id=' + str(user.telegram_id) + '\">' + (user.first_name or '') + ' ' +
+                    (user.last_name or '') + '</a>'}",
+            parse_mode=ParseMode.HTML
+        )
+        session.query(User).filter(User.id == user.id).update({User.message_telegram_id: message.message_id})
         session.commit()
 
     await callback.message.edit_text(CLIENT_LOCALE_MESSAGES[language]["start"])

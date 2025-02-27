@@ -34,6 +34,7 @@ class User(Base):
     role: Mapped[Role] = mapped_column(SqlEnum(Role), nullable=False, default=Role.CLIENT)
     language: Mapped[Language] = mapped_column(SqlEnum(Language), nullable=True)
     issue: Mapped[Issue] = mapped_column(SqlEnum(Issue), nullable=True)
+    message_telegram_id: Mapped[int] = mapped_column(Integer, nullable=True)
     registered_at: Mapped[DateTime] = mapped_column(DateTime, nullable=False, default=datetime.now)
 
     def __repr__(self):
@@ -46,4 +47,5 @@ class User(Base):
                 f"role={self.role}, ",
                 f"language={self.language}, ",
                 f"issue={self.issue}, ",
+                f"message_telegram_id={self.message_telegram_id}, ",
                 f"registered_at={cast(datetime, self.registered_at).strftime('%Y-%m-%d %H:%M')}>")
