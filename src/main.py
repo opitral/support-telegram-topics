@@ -2,7 +2,7 @@ import asyncio
 
 from aiogram import Bot, Dispatcher
 
-from internal.handlers import admin_router, client_router
+from internal.handlers import admin_router, client_router, operator_router
 from internal.utils import get_admins_telegram_id, create_admin_if_not_exist
 from pkg.config import settings
 from pkg.database import create_db
@@ -36,6 +36,7 @@ async def main():
 
     dp.include_router(admin_router)
     dp.include_router(client_router)
+    dp.include_router(operator_router)
 
     await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)

@@ -5,15 +5,15 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import Message, CallbackQuery
 
-from internal.filters import IsAdminFilter, ChatTypeFilter
+from internal.filters import HasRole, ChatTypeFilter
 from internal.keyboards import main_admin_kb, languages_kb, LanguageCbData, issues_kb, IssueCbData
-from internal.models import User, Language
+from internal.models import User, Language, Role
 from internal.utils import CLIENT_LOCALE_MESSAGES
 from pkg.config import settings
 from pkg.database import session_factory
 
 admin_router = Router()
-admin_router.message.filter(IsAdminFilter())
+admin_router.message.filter(HasRole(Role.ADMIN), ChatTypeFilter(is_group=False))
 
 
 @admin_router.message(Command("start"))
@@ -22,7 +22,7 @@ async def start_admin(message: Message):
 
 
 client_router = Router()
-client_router.message.filter(~IsAdminFilter())
+client_router.message.filter(HasRole(Role.CLIENT), ChatTypeFilter(is_group=False))
 
 
 class ClientRegistrationState(StatesGroup):
@@ -47,7 +47,7 @@ async def message_set_issue(message: Message, state: FSMContext):
 @client_router.message(Command("start"))
 async def start_client(message: Message, state: FSMContext):
     with session_factory() as session:
-        user = session.query(User).filter(User.telegram_id == message.chat.id).first()
+        user = session.query(User).filter(User.telegram_id == message.from_user.id).first()
         if not user:
             await state.set_state(ClientRegistrationState.language)
             return await message.answer("Выберите язык", reply_markup=languages_kb)
@@ -74,10 +74,10 @@ async def callback_set_issue(callback: CallbackQuery, callback_data: IssueCbData
     issue = callback_data.issue
     with session_factory() as session:
         user = User(
-            telegram_id=callback.message.chat.id,
-            username=callback.message.chat.username,
-            first_name=callback.message.chat.first_name,
-            last_name=callback.message.chat.last_name,
+            telegram_id=callback.message.from_user.id,
+            username=callback.message.from_user.username,
+            first_name=callback.message.from_user.first_name,
+            last_name=callback.message.from_user.last_name,
             language=language,
             issue=issue
         )
@@ -109,10 +109,32 @@ async def callback_set_issue(callback: CallbackQuery, callback_data: IssueCbData
 @client_router.message(ChatTypeFilter(is_group=False))
 async def send_message_to_forum(message: Message):
     with session_factory() as session:
-        user = session.query(User).filter(User.telegram_id == message.chat.id).first()
+        user = session.query(User).filter(User.telegram_id == message.from_user.id).first()
         await message.bot.forward_message(
             settings.GROUP_TELEGRAM_ID,
             message_thread_id=user.message_thread_id,
             from_chat_id=message.chat.id,
             message_id=message.message_id
         )
+
+
+operator_router = Router()
+operator_router.message.filter(HasRole(Role.OPERATOR, Role.ADMIN))
+
+@operator_router.message(ChatTypeFilter(is_group=False))
+async def start_operator(message: Message):
+    await message.answer("Здравствуйте, оператор")
+
+
+@operator_router.message(ChatTypeFilter(is_group=True))
+async def reply_to_client(message: Message):
+    with session_factory() as session:
+        user = session.query(User).filter(User.message_thread_id == message.message_thread_id).first()
+        if user:
+            await message.bot.copy_message(
+                user.telegram_id,
+                from_chat_id=message.chat.id,
+                message_id=message.message_id
+            )
+        else:
+            await message.answer("Пользователь не найден")
