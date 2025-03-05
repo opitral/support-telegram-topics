@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     ADMIN_USERNAME: Optional[str] = None
     ADMIN_FIRST_NAME: Optional[str] = None
     ADMIN_LAST_NAME: Optional[str] = None
-    CHANNEL_TELEGRAM_ID: int
+    GROUP_TELEGRAM_ID: int
+    GROUP_TELEGRAM_URL: str
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

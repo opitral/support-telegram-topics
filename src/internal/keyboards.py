@@ -1,7 +1,7 @@
 from aiogram.filters.callback_data import CallbackData
 from aiogram.utils.keyboard import KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 
-from internal.models import Language, Issue
+from internal.models import Language, Issue, User
 from internal.utils import CLIENT_LOCALE_MESSAGES
 
 main_admin_kb = ReplyKeyboardMarkup(
@@ -51,3 +51,20 @@ def issues_kb(language: Language) -> InlineKeyboardMarkup:
                     ]
                 ]
             )
+
+
+class MuteClientCbData(CallbackData, prefix="mute"):
+    user_id: int
+
+
+def mute_client_kb(user: User) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔇 Заглушить",
+                    callback_data=MuteClientCbData(user_id=user.id).pack()
+                )
+            ]
+        ]
+    )
