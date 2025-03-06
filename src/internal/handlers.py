@@ -6,8 +6,6 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
-from sqlalchemy.orm.sync import update
-from sqlalchemy.util import await_only
 
 from internal.filters import HasRole, ChatTypeFilter
 from internal.keyboards import main_admin_kb, languages_kb, LanguageCbData, issues_kb, IssueCbData, cancel_kb, \
