@@ -2,17 +2,17 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.utils.keyboard import KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, InlineKeyboardBuilder
 
 from internal.models import Language, Issue, User
-from internal.utils import CLIENT_LOCALE_MESSAGES, get_clients, get_clients_count
+from internal.utils import CLIENT_LOCALE_MESSAGES, get_clients, get_clients_count, get_operators, get_operators_count
 from pkg.config import settings
 
 main_admin_kb = ReplyKeyboardMarkup(
         keyboard=[
             [
-                KeyboardButton(text="Сделать рассылку клиентам"),
-                KeyboardButton(text="Клиенты")
+                KeyboardButton(text="Сделать рассылку клиентам")
             ],
             [
-                KeyboardButton(text="Админка")
+                KeyboardButton(text="Операторы"),
+                KeyboardButton(text="Клиенты")
             ]
         ],
         resize_keyboard=True
@@ -135,12 +135,11 @@ back_skip_kb = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-class ClientsPageCbData(CallbackData, prefix="page"):
+class ClientsPageCbData(CallbackData, prefix="clients_page"):
     page: int
 
 
-def calc_clients_page(current_page: int = 1, is_next: bool = True) -> int:
-    max_page = (get_clients_count() + settings.PAGE_SIZE - 1) // settings.PAGE_SIZE
+def calc_page(max_page: int, current_page: int = 1, is_next: bool = True) -> int:
     if is_next:
         if current_page < max_page:
             return current_page + 1
@@ -164,14 +163,43 @@ def clients_kb(page: int = 1) -> InlineKeyboardMarkup:
             )
         )
 
+    max_page = (get_clients_count() + settings.PAGE_SIZE - 1) // settings.PAGE_SIZE
     kb.row(
         InlineKeyboardButton(
             text="⬅️",
-            callback_data=ClientsPageCbData(page=calc_clients_page(page, is_next=False)).pack()
+            callback_data=ClientsPageCbData(page=calc_page(max_page, page, is_next=False)).pack()
         ),
         InlineKeyboardButton(
             text="➡️",
-            callback_data=ClientsPageCbData(page=calc_clients_page(page, is_next=True)).pack()
+            callback_data=ClientsPageCbData(page=calc_page(max_page, page, is_next=True)).pack()
+        )
+    )
+    return kb.as_markup()
+
+
+class OperatorsPageCbData(CallbackData, prefix="operators_page"):
+    page: int
+
+
+def operators_kb(page: int = 1) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    operators = get_operators()
+    for operator in operators:
+        kb.row(
+            InlineKeyboardButton(
+                text=f"{operator.id}. {operator.full_name}",
+                url=f"tg://user?id={operator.telegram_id}"
+            )
+        )
+    max_page = (get_operators_count() + settings.PAGE_SIZE - 1) // settings.PAGE_SIZE
+    kb.row(
+        InlineKeyboardButton(
+            text="⬅️",
+            callback_data=OperatorsPageCbData(page=calc_page(max_page, page, is_next=False)).pack()
+        ),
+        InlineKeyboardButton(
+            text="➡️",
+            callback_data=OperatorsPageCbData(page=calc_page(max_page, page, is_next=True)).pack()
         )
     )
     return kb.as_markup()

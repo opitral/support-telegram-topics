@@ -91,13 +91,25 @@ async def notify(bot: Bot, target_recipients: list[TargetRecipient], message: st
             await bot.send_message(receiver, message, parse_mode=ParseMode.HTML, reply_markup=keyboard)
 
 
-def get_clients(offset: int = 0, limit: int = 10):
+def get_clients(offset: int = 0, limit: int = 10) -> list[User]:
     with session_factory() as session:
         clients = session.query(User).filter(User.role == Role.CLIENT).offset(offset).limit(limit).all()
         return clients
 
 
-def get_clients_count():
+def get_clients_count() -> int:
     with session_factory() as session:
         clients_count = session.query(User).filter(User.role == Role.CLIENT).count()
         return clients_count
+
+
+def get_operators(offset: int = 0, limit: int = 10) -> list[User]:
+    with session_factory() as session:
+        operators = session.query(User).filter(User.role == Role.OPERATOR).offset(offset).limit(limit).all()
+        return operators
+
+
+def get_operators_count() -> int:
+    with session_factory() as session:
+        operators_count = session.query(User).filter(User.role == Role.OPERATOR).count()
+        return operators_count

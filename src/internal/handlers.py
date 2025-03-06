@@ -1,6 +1,7 @@
 import validators
 from aiogram import Router, F
 from aiogram.enums import ParseMode
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
@@ -8,9 +9,10 @@ from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
 
 from internal.filters import HasRole, ChatTypeFilter
 from internal.keyboards import main_admin_kb, languages_kb, LanguageCbData, issues_kb, IssueCbData, cancel_kb, \
-    yes_back_kb, YesBackCbData, custom_inline_kb, back_skip_kb, clients_kb, ClientsPageCbData
+    yes_back_kb, YesBackCbData, custom_inline_kb, back_skip_kb, clients_kb, ClientsPageCbData, operators_kb, \
+    OperatorsPageCbData
 from internal.models import User, Language, Role
-from internal.utils import CLIENT_LOCALE_MESSAGES
+from internal.utils import CLIENT_LOCALE_MESSAGES, get_clients_count, get_operators_count
 from pkg.config import settings
 from pkg.database import session_factory
 from pkg.logger import get_logger
@@ -136,9 +138,7 @@ async def submit_post_callback(callback: CallbackQuery, callback_data: YesBackCb
 
 @admin_router.message(F.text.lower() == "клиенты")
 async def show_clients(message: Message):
-    with session_factory() as session:
-        clients_count = session.query(User).filter(User.role == Role.CLIENT).count()
-
+    clients_count = get_clients_count()
     await message.answer(
         f"Всего найдено клиентов: {clients_count}",
         reply_markup=clients_kb() if clients_count else None
@@ -147,16 +147,43 @@ async def show_clients(message: Message):
 
 @admin_router.callback_query(ClientsPageCbData.filter())
 async def clients_page_callback(callback: CallbackQuery, callback_data: ClientsPageCbData):
-    with session_factory() as session:
-        clients_count = session.query(User).filter(User.role == Role.CLIENT).count()
+    try:
+        clients_count = get_clients_count()
+        await callback.message.edit_text(
+            f"Всего найдено клиентов: {clients_count}",
+            reply_markup=clients_kb(callback_data.page) if clients_count else None
+        )
+    except TelegramBadRequest:
+        pass
+    finally:
+        await callback.answer()
 
-    await callback.message.edit_text(
-        f"Всего найдено клиентов: {clients_count}",
-        reply_markup=clients_kb(callback_data.page) if clients_count else None
+
+@admin_router.message(F.text.lower() == "операторы")
+async def show_operators(message: Message):
+    operators_count = get_operators_count()
+    await message.answer(
+        f"Всего найдено операторов: {operators_count}",
+        reply_markup=operators_kb() if operators_count else None
     )
 
+
+@admin_router.callback_query(OperatorsPageCbData.filter())
+async def operators_page_callback(callback: CallbackQuery, callback_data: OperatorsPageCbData):
+    try:
+        operators_count = get_operators_count()
+        await callback.message.edit_text(
+            f"Всего найдено операторов: {operators_count}",
+            reply_markup=operators_kb(callback_data.page) if operators_count else None
+        )
+    except TelegramBadRequest:
+        pass
+    finally:
+        await callback.answer()
+
+
 client_router = Router()
-client_router.message.filter(HasRole(Role.CLIENT), ChatTypeFilter(is_group=False))
+client_router.message.filter(ChatTypeFilter(is_group=False))
 
 
 class ClientRegistrationState(StatesGroup):
@@ -208,10 +235,10 @@ async def callback_set_issue(callback: CallbackQuery, callback_data: IssueCbData
     issue = callback_data.issue
     with session_factory() as session:
         user = User(
-            telegram_id=callback.message.from_user.id,
-            username=callback.message.from_user.username,
-            first_name=callback.message.from_user.first_name,
-            last_name=callback.message.from_user.last_name,
+            telegram_id=callback.message.chat.id,
+            username=callback.message.chat.username,
+            first_name=callback.message.chat.first_name,
+            last_name=callback.message.chat.last_name,
             language=language,
             issue=issue
         )
@@ -243,7 +270,7 @@ async def callback_set_issue(callback: CallbackQuery, callback_data: IssueCbData
 @client_router.message(ChatTypeFilter(is_group=False))
 async def send_message_to_forum(message: Message):
     with session_factory() as session:
-        user = session.query(User).filter(User.telegram_id == message.from_user.id).first()
+        user = session.query(User).filter(User.telegram_id == message.chat.id).first()
         await message.bot.forward_message(
             settings.GROUP_TELEGRAM_ID,
             message_thread_id=user.message_thread_id,
