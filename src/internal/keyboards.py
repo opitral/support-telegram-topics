@@ -203,3 +203,17 @@ def operators_kb(page: int = 1) -> InlineKeyboardMarkup:
         )
     )
     return kb.as_markup()
+
+
+operators_management_kb = ReplyKeyboardMarkup(
+    keyboard=[
+        [
+            KeyboardButton(text="Добавить оператора"),
+            KeyboardButton(text="Удалить оператора")
+        ],
+        [
+            KeyboardButton(text="Назад")
+        ]
+    ],
+    resize_keyboard=True
+)

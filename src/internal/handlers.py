@@ -6,11 +6,13 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
+from sqlalchemy.orm.sync import update
+from sqlalchemy.util import await_only
 
 from internal.filters import HasRole, ChatTypeFilter
 from internal.keyboards import main_admin_kb, languages_kb, LanguageCbData, issues_kb, IssueCbData, cancel_kb, \
     yes_back_kb, YesBackCbData, custom_inline_kb, back_skip_kb, clients_kb, ClientsPageCbData, operators_kb, \
-    OperatorsPageCbData
+    OperatorsPageCbData, operators_management_kb
 from internal.models import User, Language, Role
 from internal.utils import CLIENT_LOCALE_MESSAGES, get_clients_count, get_operators_count
 from pkg.config import settings
@@ -22,8 +24,17 @@ logger = get_logger(__name__)
 admin_router = Router()
 admin_router.message.filter(HasRole(Role.ADMIN), ChatTypeFilter(is_group=False))
 
+future_operators = []
+
+
+class OperatorsManagement(StatesGroup):
+    main = State()
+    add_operator = State()
+    remove_operator = State()
+
 
 @admin_router.message(Command("start"))
+@admin_router.message(F.text.lower() == "назад", OperatorsManagement.main)
 async def start_admin(message: Message):
     await message.answer("Здравствуйте, админ", reply_markup=main_admin_kb)
 
@@ -160,12 +171,59 @@ async def clients_page_callback(callback: CallbackQuery, callback_data: ClientsP
 
 
 @admin_router.message(F.text.lower() == "операторы")
-async def show_operators(message: Message):
+@admin_router.message(F.text.lower() == "отмена", StateFilter(OperatorsManagement.add_operator, OperatorsManagement.remove_operator))
+async def show_operators(message: Message, state: FSMContext):
+    await state.set_state(OperatorsManagement.main)
+    await message.answer("Управление операторами", reply_markup=operators_management_kb)
     operators_count = get_operators_count()
     await message.answer(
         f"Всего найдено операторов: {operators_count}",
         reply_markup=operators_kb() if operators_count else None
     )
+
+
+@admin_router.message(F.text.lower() == "добавить оператора", OperatorsManagement.main)
+async def add_operator(message: Message, state: FSMContext):
+    await state.set_state(OperatorsManagement.add_operator)
+    await message.answer("Введите ник оператора", reply_markup=cancel_kb)
+
+
+@admin_router.message(F.text.lower() == "удалить оператора", OperatorsManagement.main)
+async def remove_operator(message: Message, state: FSMContext):
+    await state.set_state(OperatorsManagement.remove_operator)
+    await message.answer("Введите ник оператора", reply_markup=cancel_kb)
+
+
+@admin_router.message(OperatorsManagement.add_operator)
+async def add_operator_msg(message: Message, state: FSMContext):
+    username = message.text.replace("@", "")
+    with session_factory() as session:
+        user = session.query(User).filter(User.username == username).first()
+        if user:
+            if user.role in [Role.OPERATOR, Role.ADMIN]:
+                return await message.answer("Такой оператор уже существует")
+
+            session.query(User).filter(User.id == user.id).update({User.role: Role.OPERATOR})
+            session.commit()
+            await message.answer("Оператор добавлен")
+
+        else:
+            future_operators.append(username)
+            await message.answer("Пользователь получит свою роль после перезапуска бота")
+
+        await show_operators(message, state)
+
+
+@admin_router.message(OperatorsManagement.remove_operator)
+async def remove_operator_msg(message: Message, state: FSMContext):
+    with session_factory() as session:
+        user = session.query(User).filter(User.username == message.text.replace("@", ""), User.role == Role.OPERATOR).first()
+        if not user:
+            return await message.answer("Оператор не найден, попробуйте еще раз")
+        session.query(User).filter(User.id == user.id).update({User.role: Role.CLIENT})
+        session.commit()
+    await message.answer("Оператор удален")
+    await show_operators(message, state)
 
 
 @admin_router.callback_query(OperatorsPageCbData.filter())
@@ -210,6 +268,19 @@ async def start_client(message: Message, state: FSMContext):
     with session_factory() as session:
         user = session.query(User).filter(User.telegram_id == message.from_user.id).first()
         if not user:
+            if message.chat.username in future_operators:
+                future_operators.remove(message.chat.username)
+                operator = User(
+                    telegram_id=message.chat.id,
+                    username=message.chat.username,
+                    first_name=message.chat.first_name,
+                    last_name=message.chat.last_name,
+                    role=Role.OPERATOR
+                )
+                session.add(operator)
+                session.commit()
+                return await start_operator(message)
+
             await state.set_state(ClientRegistrationState.language)
             return await message.answer("Выберите язык", reply_markup=languages_kb)
 
