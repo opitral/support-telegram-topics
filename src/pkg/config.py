@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     ADMIN_LAST_NAME: Optional[str] = None
     GROUP_TELEGRAM_ID: int
     GROUP_TELEGRAM_URL: str
+    PAGE_SIZE: int = 10
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

@@ -89,3 +89,15 @@ async def notify(bot: Bot, target_recipients: list[TargetRecipient], message: st
             await bot.send_photo(receiver, media, caption=message, parse_mode=ParseMode.HTML, reply_markup=keyboard)
         if message:
             await bot.send_message(receiver, message, parse_mode=ParseMode.HTML, reply_markup=keyboard)
+
+
+def get_clients(offset: int = 0, limit: int = 10):
+    with session_factory() as session:
+        clients = session.query(User).filter(User.role == Role.CLIENT).offset(offset).limit(limit).all()
+        return clients
+
+
+def get_clients_count():
+    with session_factory() as session:
+        clients_count = session.query(User).filter(User.role == Role.CLIENT).count()
+        return clients_count

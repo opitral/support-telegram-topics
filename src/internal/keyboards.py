@@ -1,8 +1,9 @@
 from aiogram.filters.callback_data import CallbackData
-from aiogram.utils.keyboard import KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.utils.keyboard import KeyboardButton, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, InlineKeyboardBuilder
 
 from internal.models import Language, Issue, User
-from internal.utils import CLIENT_LOCALE_MESSAGES
+from internal.utils import CLIENT_LOCALE_MESSAGES, get_clients, get_clients_count
+from pkg.config import settings
 
 main_admin_kb = ReplyKeyboardMarkup(
         keyboard=[
@@ -134,3 +135,43 @@ back_skip_kb = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
+class ClientsPageCbData(CallbackData, prefix="page"):
+    page: int
+
+
+def calc_clients_page(current_page: int = 1, is_next: bool = True) -> int:
+    max_page = (get_clients_count() + settings.PAGE_SIZE - 1) // settings.PAGE_SIZE
+    if is_next:
+        if current_page < max_page:
+            return current_page + 1
+        return 1
+    else:
+        if current_page > 1:
+            return current_page - 1
+        return max_page
+
+
+def clients_kb(page: int = 1) -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    limit = settings.PAGE_SIZE * page
+    offset = limit - settings.PAGE_SIZE
+    clients = get_clients(offset, limit)
+    for client in clients:
+        kb.row(
+            InlineKeyboardButton(
+                text=f"{client.id}. {client.full_name} [{client.language.value.upper()}|{client.issue.value.upper()}]",
+                url=f"{settings.GROUP_TELEGRAM_URL}/{client.message_thread_id}"
+            )
+        )
+
+    kb.row(
+        InlineKeyboardButton(
+            text="⬅️",
+            callback_data=ClientsPageCbData(page=calc_clients_page(page, is_next=False)).pack()
+        ),
+        InlineKeyboardButton(
+            text="➡️",
+            callback_data=ClientsPageCbData(page=calc_clients_page(page, is_next=True)).pack()
+        )
+    )
+    return kb.as_markup()

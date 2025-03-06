@@ -8,7 +8,7 @@ from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
 
 from internal.filters import HasRole, ChatTypeFilter
 from internal.keyboards import main_admin_kb, languages_kb, LanguageCbData, issues_kb, IssueCbData, cancel_kb, \
-    yes_back_kb, YesBackCbData, custom_inline_kb, back_skip_kb
+    yes_back_kb, YesBackCbData, custom_inline_kb, back_skip_kb, clients_kb, ClientsPageCbData
 from internal.models import User, Language, Role
 from internal.utils import CLIENT_LOCALE_MESSAGES
 from pkg.config import settings
@@ -133,6 +133,27 @@ async def submit_post_callback(callback: CallbackQuery, callback_data: YesBackCb
     await callback.message.answer("Сообщение отправлено", reply_markup=main_admin_kb)
     await callback.answer()
 
+
+@admin_router.message(F.text.lower() == "клиенты")
+async def show_clients(message: Message):
+    with session_factory() as session:
+        clients_count = session.query(User).filter(User.role == Role.CLIENT).count()
+
+    await message.answer(
+        f"Всего найдено клиентов: {clients_count}",
+        reply_markup=clients_kb() if clients_count else None
+    )
+
+
+@admin_router.callback_query(ClientsPageCbData.filter())
+async def clients_page_callback(callback: CallbackQuery, callback_data: ClientsPageCbData):
+    with session_factory() as session:
+        clients_count = session.query(User).filter(User.role == Role.CLIENT).count()
+
+    await callback.message.edit_text(
+        f"Всего найдено клиентов: {clients_count}",
+        reply_markup=clients_kb(callback_data.page) if clients_count else None
+    )
 
 client_router = Router()
 client_router.message.filter(HasRole(Role.CLIENT), ChatTypeFilter(is_group=False))
