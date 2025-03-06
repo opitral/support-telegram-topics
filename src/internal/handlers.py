@@ -1,16 +1,21 @@
-from aiogram import Router
+import validators
+from aiogram import Router, F
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
 
 from internal.filters import HasRole, ChatTypeFilter
-from internal.keyboards import main_admin_kb, languages_kb, LanguageCbData, issues_kb, IssueCbData
+from internal.keyboards import main_admin_kb, languages_kb, LanguageCbData, issues_kb, IssueCbData, cancel_kb, \
+    yes_back_kb, YesBackCbData, custom_inline_kb, back_skip_kb
 from internal.models import User, Language, Role
 from internal.utils import CLIENT_LOCALE_MESSAGES
 from pkg.config import settings
 from pkg.database import session_factory
+from pkg.logger import get_logger
+
+logger = get_logger(__name__)
 
 admin_router = Router()
 admin_router.message.filter(HasRole(Role.ADMIN), ChatTypeFilter(is_group=False))
@@ -19,6 +24,114 @@ admin_router.message.filter(HasRole(Role.ADMIN), ChatTypeFilter(is_group=False))
 @admin_router.message(Command("start"))
 async def start_admin(message: Message):
     await message.answer("Здравствуйте, админ", reply_markup=main_admin_kb)
+
+
+class NotifyClientMessage(StatesGroup):
+    message = State()
+    button = State()
+    submit = State()
+
+
+@admin_router.message(F.text.lower() == "сделать рассылку клиентам")
+@admin_router.message(F.text.lower() == "назад", NotifyClientMessage.button)
+async def send_message_to_clients_msg(message: Message, state: FSMContext):
+    await state.set_state(NotifyClientMessage.message)
+    await message.answer("Введите сообщение для рассылки (можно прикрепить файл или одно медиа-сообщение)", reply_markup=cancel_kb)
+
+
+@admin_router.message(F.text.lower() == "отмена", StateFilter(NotifyClientMessage))
+async def cancel_message_to_clients(message: Message, state: FSMContext):
+    await state.clear()
+    await message.answer("Главное меню", reply_markup=main_admin_kb)
+
+
+@admin_router.message(StateFilter(NotifyClientMessage.message))
+async def want_button(message: Message, state: FSMContext):
+    await state.update_data(message=message.message_id)
+    await state.set_state(NotifyClientMessage.button)
+    await message.answer("Введите данные кнопки в формате: `название кнопки - https://ссылка_кнопки`", reply_markup=back_skip_kb, parse_mode=ParseMode.MARKDOWN)
+
+
+@admin_router.message(NotifyClientMessage.button, F.text.lower() == "пропустить")
+async def skip_button_name(message: Message, state: FSMContext):
+    await submit_post(message, state)
+
+
+@admin_router.message(NotifyClientMessage.button)
+async def add_button(message: Message, state: FSMContext):
+    try:
+        button_name, button_url = message.text.split(" - ", maxsplit=1)
+        if not validators.url(button_url):
+            raise TypeError
+        await state.update_data(button_name=button_name, button_url=button_url)
+
+    except ValueError:
+        return await message.answer("Неверный формат. Попробуйте еще раз", reply_markup=back_skip_kb)
+
+    except TypeError:
+        return await message.answer("Неверная ссылка. Попробуйте еще раз", reply_markup=back_skip_kb)
+
+    await submit_post(message, state)
+
+
+@admin_router.message(StateFilter(NotifyClientMessage.button))
+async def submit_post(message: Message, state: FSMContext):
+    await state.set_state(NotifyClientMessage.submit)
+    data = await state.get_data()
+    if data.get("button_name") and data.get("button_url"):
+        await message.bot.copy_message(
+            chat_id=message.chat.id,
+            from_chat_id=message.chat.id,
+            message_id=data.get("message"),
+            reply_markup=custom_inline_kb(data.get("button_name"), data.get("button_url"))
+        )
+    else:
+        await message.bot.copy_message(
+            chat_id=message.chat.id,
+            from_chat_id=message.chat.id,
+            message_id=data.get("message")
+        )
+    await message.answer("Вы уверены, что хотите отправить это сообщение?", reply_markup=yes_back_kb)
+    temp_msg = await message.answer("del kb", reply_markup=ReplyKeyboardRemove())
+    await temp_msg.delete()
+
+
+@admin_router.callback_query(YesBackCbData.filter(), NotifyClientMessage.submit)
+async def submit_post_callback(callback: CallbackQuery, callback_data: YesBackCbData, state: FSMContext):
+    data = await state.get_data()
+    if not callback_data.yes:
+        await state.set_state(NotifyClientMessage.button)
+        await callback.message.answer(
+            "Введите данные кнопки в формате: `название кнопки - https://ссылка_кнопки`",
+            reply_markup=back_skip_kb,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        return await callback.answer()
+    with session_factory() as session:
+        users = session.query(User).filter(User.role == Role.CLIENT).all()
+        for user in users:
+            try:
+                if data.get("button_name") and data.get("button_url"):
+                    await callback.bot.copy_message(
+                        chat_id=user.telegram_id,
+                        from_chat_id=callback.message.chat.id,
+                        message_id=data.get("message"),
+                        reply_markup=custom_inline_kb(data.get("button_name"), data.get("button_url"))
+                    )
+                else:
+                    await callback.bot.copy_message(
+                        chat_id=user.telegram_id,
+                        from_chat_id=callback.message.chat.id,
+                        message_id=data.get("message")
+                    )
+
+            except Exception as e:
+                logger.warning("Error while sending message to user", e)
+                continue
+
+    await state.clear()
+    await callback.message.answer("Сообщение отправлено", reply_markup=main_admin_kb)
+    await callback.answer()
 
 
 client_router = Router()
@@ -119,14 +232,13 @@ async def send_message_to_forum(message: Message):
 
 
 operator_router = Router()
-operator_router.message.filter(HasRole(Role.OPERATOR, Role.ADMIN))
 
-@operator_router.message(ChatTypeFilter(is_group=False))
+@operator_router.message(ChatTypeFilter(is_group=False), HasRole(Role.OPERATOR))
 async def start_operator(message: Message):
     await message.answer("Здравствуйте, оператор")
 
 
-@operator_router.message(ChatTypeFilter(is_group=True))
+@operator_router.message(ChatTypeFilter(is_group=True), HasRole(Role.OPERATOR, Role.ADMIN))
 async def reply_to_client(message: Message):
     with session_factory() as session:
         user = session.query(User).filter(User.message_thread_id == message.message_thread_id).first()

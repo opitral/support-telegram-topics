@@ -68,3 +68,69 @@ def mute_client_kb(user: User) -> InlineKeyboardMarkup:
             ]
         ]
     )
+
+
+cancel_kb = ReplyKeyboardMarkup(
+    keyboard=[
+        [
+            KeyboardButton(text="Отмена")
+        ]
+    ],
+    resize_keyboard=True
+)
+
+
+add_skip_kb = ReplyKeyboardMarkup(
+    keyboard=[
+        [
+            KeyboardButton(text="Добавить")
+        ],
+        [
+            KeyboardButton(text="Пропустить")
+        ]
+    ],
+    resize_keyboard=True
+)
+
+back_kb = ReplyKeyboardMarkup(
+    keyboard=[
+        [
+            KeyboardButton(text="Назад")
+        ]
+    ],
+    resize_keyboard=True
+)
+
+class YesBackCbData(CallbackData, prefix="yes_back"):
+    yes: bool
+
+
+yes_back_kb = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(text="Да", callback_data=YesBackCbData(yes=True).pack()),
+            InlineKeyboardButton(text="Назад", callback_data=YesBackCbData(yes=False).pack())
+        ]
+    ]
+)
+
+def custom_inline_kb(name: str, url: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=name, url=url)]
+        ]
+    )
+
+
+back_skip_kb = ReplyKeyboardMarkup(
+    keyboard=[
+        [
+            KeyboardButton(text="Пропустить")
+        ],
+        [
+            KeyboardButton(text="Назад")
+        ]
+    ],
+    resize_keyboard=True
+)
+
