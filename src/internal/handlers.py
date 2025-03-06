@@ -189,7 +189,7 @@ async def add_operator(message: Message, state: FSMContext):
 @admin_router.message(F.text.lower() == "удалить оператора", OperatorsManagement.main)
 async def remove_operator(message: Message, state: FSMContext):
     await state.set_state(OperatorsManagement.remove_operator)
-    await message.answer("Введите ник оператора", reply_markup=cancel_kb)
+    await message.answer("Введите id пользователя", reply_markup=cancel_kb)
 
 
 @admin_router.message(OperatorsManagement.add_operator)
@@ -214,11 +214,15 @@ async def add_operator_msg(message: Message, state: FSMContext):
 
 @admin_router.message(OperatorsManagement.remove_operator)
 async def remove_operator_msg(message: Message, state: FSMContext):
+    try:
+        user_id = int(message.text)
+    except ValueError:
+        return await message.answer("Неверный формат. Попробуйте еще раз")
     with session_factory() as session:
-        user = session.query(User).filter(User.username == message.text.replace("@", ""), User.role == Role.OPERATOR).first()
+        user = session.query(User).filter(User.id == user_id, User.role == Role.OPERATOR).first()
         if not user:
             return await message.answer("Оператор не найден, попробуйте еще раз")
-        session.query(User).filter(User.id == user.id).update({User.role: Role.CLIENT})
+        session.delete(user)
         session.commit()
     await message.answer("Оператор удален")
     await show_operators(message, state)

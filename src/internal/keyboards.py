@@ -44,7 +44,9 @@ def issues_kb(language: Language) -> InlineKeyboardMarkup:
                         InlineKeyboardButton(
                             text=CLIENT_LOCALE_MESSAGES[language]["sale"],
                             callback_data=IssueCbData(issue=Issue.SALE).pack()
-                        ),
+                        )
+                    ],
+                    [
                         InlineKeyboardButton(
                             text=CLIENT_LOCALE_MESSAGES[language]["support"],
                             callback_data=IssueCbData(issue=Issue.SUPPORT).pack()
